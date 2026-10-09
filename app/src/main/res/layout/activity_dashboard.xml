@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/sacco_background"
+    android:fillViewport="true"
+    android:clipToPadding="false">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <!-- Welcome header -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="24dp"
+            android:background="@drawable/bg_dashboard_header"
+            android:elevation="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="YOUR SACCO"
+                android:textColor="#BCE8CF"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.12" />
+
+            <TextView
+                android:id="@+id/tvWelcome"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:text="Welcome, Member"
+                android:textColor="#FFFFFF"
+                android:textSize="27sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvMemberNumber"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="Member Number: SAC001"
+                android:textColor="#E3F4E9"
+                android:textSize="15sp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Save together. Grow together."
+                android:textColor="#FFFFFF"
+                android:textSize="14sp" />
+
+        </LinearLayout>
+
+        <!-- Section heading -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:layout_marginBottom="12dp"
+            android:text="YOUR ACCOUNT"
+            android:textColor="@color/sacco_text_primary"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <!-- Savings -->
+        <Button
+            android:id="@+id/btnSavings"
+            style="@style/SaccoDashboardButton"
+            android:backgroundTint="#176B45"
+            android:text="MY SAVINGS\nView savings and deposits" />
+
+        <!-- Loans -->
+        <Button
+            android:id="@+id/btnLoans"
+            style="@style/SaccoDashboardButton"
+            android:backgroundTint="#187A91"
+            android:text="LOANS\nApply for and manage loans" />
+
+        <!-- Repayments -->
+        <Button
+            android:id="@+id/btnRepayments"
+            style="@style/SaccoDashboardButton"
+            android:backgroundTint="#6350A5"
+            android:text="LOAN REPAYMENTS\nMake and review repayments" />
+
+        <!-- Transactions -->
+        <Button
+            android:id="@+id/btnTransactions"
+            style="@style/SaccoDashboardButton"
+            android:backgroundTint="#B87316"
+            android:text="TRANSACTIONS\nReview your transaction history" />
+
+        <!-- Profile -->
+        <Button
+            android:id="@+id/btnProfile"
+            style="@style/SaccoDashboardButton"
+            android:backgroundTint="#087F8C"
+            android:text="MY PROFILE\nView your member information" />
+
+        <!-- Logout -->
+        <Button
+            android:id="@+id/btnLogout"
+            style="@style/SaccoDashboardButton"
+            android:layout_marginTop="12dp"
+            android:backgroundTint="#52645A"
+            android:text="LOG OUT\nSign out of your account" />
+
+        <!-- Admin section -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="26dp"
+            android:layout_marginBottom="8dp"
+            android:text="ADMINISTRATION"
+            android:textColor="@color/sacco_text_secondary"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btnAdmin"
+            style="@style/SaccoDashboardButton"
+            android:backgroundTint="#8B1E2D"
+            android:text="ADMIN DASHBOARD\nManage members and loan approvals" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="8dp"
+            android:gravity="center"
+            android:text="Your savings. Your future."
+            android:textColor="@color/sacco_text_secondary"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+
+</ScrollView>

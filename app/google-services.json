@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "567089215452",
+    "project_id": "sacco-app-c48e2",
+    "storage_bucket": "sacco-app-c48e2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:567089215452:android:ac08e7dce50996f7b94119",
+        "android_client_info": {
+          "package_name": "com.example.saccoapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDSPQ3LZc416nhB215JZdCKudzTMop-rsM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

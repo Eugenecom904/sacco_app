@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F5F7F5">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <!-- TITLE -->
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="My Loans"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:textColor="#1F6B43"
+            android:layout_marginBottom="5dp" />
+
+        <TextView
+            android:id="@+id/tvLoanMember"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Member Loan Account"
+            android:textSize="15sp"
+            android:textColor="#666666"
+            android:layout_marginBottom="20dp" />
+
+        <!-- LOAN BALANCE CARD -->
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="24dp"
+            android:background="#1F6B43"
+            android:layout_marginBottom="20dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="OUTSTANDING LOAN BALANCE"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/tvLoanBalance"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="KES 0.00"
+                android:textColor="#FFFFFF"
+                android:textSize="32sp"
+                android:textStyle="bold"
+                android:layout_marginTop="8dp" />
+
+        </LinearLayout>
+
+        <!-- APPLY BUTTON -->
+
+        <Button
+            android:id="@+id/btnApplyLoan"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="APPLY FOR LOAN"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:backgroundTint="#1F6B43"
+            android:textColor="#FFFFFF"
+            android:layout_marginBottom="25dp" />
+
+        <!-- ACTIVE LOANS -->
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="My Loan Applications"
+            android:textSize="21sp"
+            android:textStyle="bold"
+            android:textColor="#222222"
+            android:layout_marginBottom="12dp" />
+
+        <LinearLayout
+            android:id="@+id/loanHistoryContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tvNoLoans"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="No loan applications yet."
+                android:textSize="16sp"
+                android:textColor="#777777"
+                android:padding="20dp"
+                android:gravity="center" />
+
+        </LinearLayout>
+
+        <!-- BACK -->
+
+        <Button
+            android:id="@+id/btnBack"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="BACK TO DASHBOARD"
+            android:layout_marginTop="25dp" />
+
+    </LinearLayout>
+
+</ScrollView>

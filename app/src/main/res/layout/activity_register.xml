@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <!-- Header -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="SACCO MOBILE"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:layout_gravity="center"
+            android:layout_marginBottom="5dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Member Registration"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_gravity="center"
+            android:layout_marginBottom="25dp" />
+
+        <!-- Personal Information -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Personal Information"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="10dp" />
+
+        <EditText
+            android:id="@+id/etMemberNumber"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Member Number"
+            android:inputType="number"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp" />
+
+        <EditText
+            android:id="@+id/etFullName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Full Name"
+            android:inputType="textPersonName"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp" />
+
+        <EditText
+            android:id="@+id/etIdNumber"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="National ID / Passport Number"
+            android:inputType="text"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp" />
+
+        <EditText
+            android:id="@+id/etDateOfBirth"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Date of Birth"
+            android:focusable="false"
+            android:clickable="true"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp" />
+
+        <Spinner
+            android:id="@+id/spGender"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Contact Information -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Contact Information"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="10dp" />
+
+        <EditText
+            android:id="@+id/etPhone"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Phone Number"
+            android:inputType="phone"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp" />
+
+        <EditText
+            android:id="@+id/etEmail"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Email Address"
+            android:inputType="textEmailAddress"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp" />
+
+        <EditText
+            android:id="@+id/etCounty"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="County"
+            android:inputType="text"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp" />
+
+        <EditText
+            android:id="@+id/etAddress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Physical Address"
+            android:inputType="textPostalAddress"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Employment Information -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Employment Information"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="10dp" />
+
+        <EditText
+            android:id="@+id/etOccupation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Occupation"
+            android:inputType="text"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp" />
+
+        <EditText
+            android:id="@+id/etEmployer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Employer / Business Name"
+            android:inputType="text"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Next of Kin -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Next of Kin"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="10dp" />
+
+        <EditText
+            android:id="@+id/etNextOfKinName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Next of Kin Full Name"
+            android:inputType="textPersonName"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp" />
+
+        <EditText
+            android:id="@+id/etNextOfKinPhone"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Next of Kin Phone Number"
+            android:inputType="phone"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Account Security -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Account Security"
+            android:textSize="17sp"
+            android:textStyle="bold"
+            android:layout_marginTop="10dp"
+            android:layout_marginBottom="10dp" />
+
+        <EditText
+            android:id="@+id/etPassword"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Password"
+            android:inputType="textPassword"
+            android:padding="14dp"
+            android:layout_marginBottom="12dp" />
+
+        <EditText
+            android:id="@+id/etConfirmPassword"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Confirm Password"
+            android:inputType="textPassword"
+            android:padding="14dp"
+            android:layout_marginBottom="20dp" />
+
+        <!-- Buttons -->
+        <Button
+            android:id="@+id/btnRegister"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="REGISTER"
+            android:textSize="16sp"
+            android:layout_marginBottom="10dp" />
+
+        <Button
+            android:id="@+id/btnBackToLogin"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="BACK TO LOGIN"
+            android:textSize="16sp" />
+
+    </LinearLayout>
+</ScrollView>
