@@ -231,6 +231,8 @@ app.post("/mpesa/stkpush", requireMember, async (req, res) => {
     const timestamp = getTimestamp();
 
     const shortcode = process.env.MPESA_SHORTCODE || "174379";
+    console.log("Daraja environment:", process.env.MPESA_ENV);
+    console.log("Shortcode being sent:", shortcode);
     const passkey = process.env.MPESA_PASSKEY;
 
     const password = Buffer.from(
