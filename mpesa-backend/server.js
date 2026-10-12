@@ -179,6 +179,7 @@ app.get("/", (_req, res) => {
 });
 
 app.post("/mpesa/stkpush", requireMember, async (req, res) => {
+   console.log("STK Push route reached"); 
   let transactionRef;
 
   try {
@@ -251,42 +252,18 @@ app.post("/mpesa/stkpush", requireMember, async (req, res) => {
       }
     );
 
-    const data = await response.json();
+    const responseText = await response.text();
 
-    if (!response.ok || !data.CheckoutRequestID) {
-      await transactionRef.update({
-        status: "FAILED",
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+let data = {};
 
-      return res.status(502).json({
-        error: "Safaricom did not accept the STK Push request.",
-      });
-    }
+try {
+  data = responseText ? JSON.parse(responseText) : {};
+} catch {
+  data = { rawResponse: responseText };
+}
 
-    await transactionRef.update({
-      checkoutRequestId: data.CheckoutRequestID,
-      merchantRequestId: data.MerchantRequestID || null,
-    });
-
-    return res.json({
-      transactionId: transactionRef.id,
-      message: data.CustomerMessage || "Check your phone for the M-Pesa prompt.",
-    });
-  } catch (error) {
-    console.error("STK Push initiation failed:", error.message);
-
-    if (transactionRef) {
-      await transactionRef.update({
-        status: "FAILED",
-        updatedAt: FieldValue.serverTimestamp(),
-      }).catch(() => {});
-    }
-
-    return res.status(500).json({
-      error: error.message || "Unable to initiate payment.",
-    });
-  }
+console.log("Daraja STK HTTP status:", response.status);
+console.log("Daraja STK response:", JSON.stringify(data));
 });
 
 app.post("/mpesa/callback", async (req, res) => {
