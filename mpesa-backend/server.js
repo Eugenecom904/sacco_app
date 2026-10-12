@@ -3,7 +3,10 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
-const admin = require("firebase-admin");
+
+const { initializeApp, cert } = require("firebase-admin/app");
+const { getAuth } = require("firebase-admin/auth");
+const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const crypto = require("crypto");
 
 const app = express();
@@ -33,12 +36,13 @@ const serviceAccount = JSON.parse(
   process.env.FIREBASE_SERVICE_ACCOUNT_JSON
 );
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+
+initializeApp({
+  credential: cert(serviceAccount),
   projectId: process.env.FIREBASE_PROJECT_ID || "sacco-app-c48e2",
 });
 
-const db = admin.firestore();
+const db = getFirestore();
 
 function normalizePhone(phone) {
   let value = String(phone || "").replace(/[\s+-]/g, "");
@@ -138,7 +142,7 @@ async function requireMember(req, res, next) {
       return res.status(401).json({ error: "Sign in is required." });
     }
 
-    const decoded = await admin.auth().verifyIdToken(match[1]);
+    const decoded = await getAuth().verifyIdToken(match[1]);
     req.uid = decoded.uid;
     next();
   } catch {
@@ -178,7 +182,7 @@ app.post("/mpesa/stkpush", requireMember, async (req, res) => {
       amount,
       phone,
       status: "PENDING",
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
 
     const token = await getAccessToken();
@@ -228,7 +232,7 @@ app.post("/mpesa/stkpush", requireMember, async (req, res) => {
     if (!response.ok || !data.CheckoutRequestID) {
       await transactionRef.update({
         status: "FAILED",
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       });
 
       return res.status(502).json({
@@ -251,7 +255,7 @@ app.post("/mpesa/stkpush", requireMember, async (req, res) => {
     if (transactionRef) {
       await transactionRef.update({
         status: "FAILED",
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       }).catch(() => {});
     }
 
@@ -303,7 +307,7 @@ app.post("/mpesa/callback", async (req, res) => {
         status: "FAILED",
         resultCode: callback.ResultCode,
         resultDescription: callback.ResultDesc || "Payment failed",
-        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        completedAt: FieldValue.serverTimestamp(),
       });
 
       return res.status(200).send("Received");
@@ -346,13 +350,13 @@ app.post("/mpesa/callback", async (req, res) => {
         receiptNumber: String(receipt),
         phone: transaction.phone,
         timestamp: Date.now(),
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: FieldValue.serverTimestamp(),
       });
 
       tx.update(transactionRef, {
         status: "SUCCESS",
         receiptNumber: String(receipt),
-        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+        completedAt: FieldValue.serverTimestamp(),
       });
     });
 
