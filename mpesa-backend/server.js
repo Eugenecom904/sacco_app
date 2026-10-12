@@ -94,13 +94,37 @@ async function getAccessToken() {
     { headers: { Authorization: `Basic ${credentials}` } }
   );
 
-  const data = await response.json();
+  
+const responseText = await response.text();
 
-  if (!response.ok || !data.access_token) {
-    throw new Error("Daraja authentication failed.");
-  }
+let data = {};
+try {
+  data = responseText ? JSON.parse(responseText) : {};
+} catch {
+  data = { rawResponse: responseText };
+}
 
-  return data.access_token;
+// Log the Safaricom response, never the access token or password.
+console.error("Daraja STK HTTP status:", response.status);
+console.error("Daraja STK response:", JSON.stringify(data));
+
+if (!response.ok || !data.CheckoutRequestID) {
+  await transactionRef.update({
+    status: "FAILED",
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  const darajaMessage =
+    data.errorMessage ||
+    data.ResponseDescription ||
+    data.ResponseDesc ||
+    data.error ||
+    "Safaricom did not accept the STK Push request.";
+
+  return res.status(502).json({
+    error: darajaMessage,
+    darajaCode: data.errorCode || data.ResponseCode || null,
+  });
 }
 
 async function getOutstandingBalance(uid) {
