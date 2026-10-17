@@ -3,61 +3,113 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
-const crypto = require("crypto");
-
-const { initializeApp, cert } = require("firebase-admin/app");
-const { getAuth } = require("firebase-admin/auth");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const rateLimit = require("express-rate-limit");
 
 const app = express();
 
-app.use(cors());
-app.use(express.json({ limit: "100kb" }));
+app.set("trust proxy", 1);
 
 const PORT = process.env.PORT || 3000;
-const IS_SANDBOX = process.env.MPESA_ENV === "sandbox";
+const payments = new Map();
 
-const DARAJA_BASE = IS_SANDBOX
-  ? "https://sandbox.safaricom.co.ke"
-  : "https://api.safaricom.co.ke";
+app.use(express.json({ limit: "100kb" }));
 
-if (!IS_SANDBOX) {
-  throw new Error(
-    "This backend is sandbox-only until live-payment verification is implemented."
-  );
-}
+// Restrict browser access when FRONTEND_ORIGIN is configured.
+// Android native HTTP requests do not rely on browser CORS.
+const corsOptions = process.env.FRONTEND_ORIGIN
+  ? { origin: process.env.FRONTEND_ORIGIN }
+  : { origin: false };
 
-if (!process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-  throw new Error("Missing FIREBASE_SERVICE_ACCOUNT_JSON environment variable.");
-}
+app.use(cors(corsOptions));
 
-if (!process.env.CALLBACK_TOKEN || process.env.CALLBACK_TOKEN.length < 32) {
-  throw new Error("Set a strong CALLBACK_TOKEN in your environment.");
-}
-
-const serviceAccount = JSON.parse(
-  process.env.FIREBASE_SERVICE_ACCOUNT_JSON
-);
-
-initializeApp({
-  credential: cert(serviceAccount),
-  projectId: process.env.FIREBASE_PROJECT_ID || "sacco-app-c48e2",
+app.use((req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
 });
 
-const db = getFirestore();
+const stkLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
-function normalizePhone(phone) {
-  let value = String(phone || "").replace(/[\s+-]/g, "");
+const statusLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
-  if (/^0[17]\d{8}$/.test(value)) {
-    value = "254" + value.substring(1);
+function config() {
+  const required = [
+    "DARAJA_CONSUMER_KEY",
+    "DARAJA_CONSUMER_SECRET",
+    "DARAJA_SHORTCODE",
+    "DARAJA_PASSKEY",
+    "DARAJA_CALLBACK_URL"
+  ];
+
+  const missing = required.filter(
+    key => !process.env[key]?.trim()
+  );
+
+  if (missing.length) {
+    throw new Error(
+      "Missing environment variables: " + missing.join(", ")
+    );
   }
 
-  if (!/^254[17]\d{8}$/.test(value)) {
-    throw new Error("Enter a valid Kenyan M-Pesa phone number.");
+  const callback = process.env.DARAJA_CALLBACK_URL.trim();
+
+  if (!callback.startsWith("https://")) {
+    throw new Error("DARAJA_CALLBACK_URL must use HTTPS.");
   }
 
-  return value;
+  const environment = (
+    process.env.DARAJA_ENV || "sandbox"
+  ).toLowerCase();
+
+  if (!["sandbox", "production"].includes(environment)) {
+    throw new Error(
+      "DARAJA_ENV must be sandbox or production."
+    );
+  }
+
+  return {
+    key: process.env.DARAJA_CONSUMER_KEY.trim(),
+    secret: process.env.DARAJA_CONSUMER_SECRET.trim(),
+    shortcode: process.env.DARAJA_SHORTCODE.trim(),
+    passkey: process.env.DARAJA_PASSKEY.trim(),
+    callback,
+    environment
+  };
+}
+
+function baseUrl() {
+  return config().environment === "production"
+    ? "https://api.safaricom.co.ke"
+    : "https://sandbox.safaricom.co.ke";
+}
+
+function phoneNumber(value) {
+  let phone = String(value || "")
+    .trim()
+    .replace(/[\s+()-]/g, "");
+
+  if (phone.startsWith("0")) {
+    phone = "254" + phone.slice(1);
+  } else if (/^[17]\d{8}$/.test(phone)) {
+    phone = "254" + phone;
+  }
+
+  if (!/^254[17]\d{8}$/.test(phone)) {
+    throw new Error(
+      "Enter a valid Kenyan phone number, e.g. 0712345678."
+    );
+  }
+
+  return phone;
 }
 
 function getTimestamp() {
@@ -69,13 +121,15 @@ function getTimestamp() {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
-    hourCycle: "h23",
+    hourCycle: "h23"
   }).formatToParts(new Date());
 
   const values = {};
 
   for (const part of parts) {
-    values[part.type] = part.value;
+    if (part.type !== "literal") {
+      values[part.type] = part.value;
+    }
   }
 
   return (
@@ -88,376 +142,466 @@ function getTimestamp() {
   );
 }
 
-async function getAccessToken() {
-  const key = process.env.MPESA_CONSUMER_KEY;
-  const secret = process.env.MPESA_CONSUMER_SECRET;
+async function readDarajaResponse(response) {
+  const raw = await response.text();
 
-  if (!key || !secret || !process.env.MPESA_PASSKEY) {
-    throw new Error("Daraja sandbox environment variables are incomplete.");
+  let result;
+
+  try {
+    result = JSON.parse(raw);
+  } catch {
+    throw new Error(
+      "Daraja returned an unreadable response (HTTP " +
+      response.status + ")."
+    );
   }
 
-  const credentials = Buffer.from(`${key}:${secret}`).toString("base64");
+  if (!response.ok) {
+    console.error("Daraja HTTP error:", response.status);
+
+    throw new Error(
+      result.errorMessage ||
+      result.error_description ||
+      result.ResponseDescription ||
+      "Daraja request failed."
+    );
+  }
+
+  return result;
+}
+
+async function getToken() {
+  const credentials = config();
+
+  const basic = Buffer.from(
+    credentials.key + ":" + credentials.secret
+  ).toString("base64");
 
   const response = await fetch(
-    `${DARAJA_BASE}/oauth/v1/generate?grant_type=client_credentials`,
+    baseUrl() +
+      "/oauth/v1/generate?grant_type=client_credentials",
     {
       headers: {
-        Authorization: `Basic ${credentials}`,
+        Authorization: "Basic " + basic
       },
+      signal: AbortSignal.timeout(30000)
     }
   );
 
-  const responseText = await response.text();
+  const result = await readDarajaResponse(response);
 
-  let data = {};
-
-  try {
-    data = responseText ? JSON.parse(responseText) : {};
-  } catch {
-    data = { rawResponse: responseText };
+  if (!result.access_token) {
+    throw new Error("Daraja did not return an access token.");
   }
 
-  if (!response.ok || !data.access_token) {
-    console.error("Daraja OAuth HTTP status:", response.status);
-    console.error(
-      "Daraja OAuth error:",
-      data.error_description || data.errorMessage || data.error || "Unknown error"
-    );
-
-    throw new Error(
-      data.error_description ||
-      data.errorMessage ||
-      "Unable to obtain a Daraja access token."
-    );
-  }
-
-  return data.access_token;
+  return result.access_token;
 }
 
-async function getOutstandingBalance(uid) {
-  const [loanSnapshot, repaymentSnapshot] = await Promise.all([
-    db.collection("loans")
-      .where("userId", "==", uid)
-      .where("status", "==", "APPROVED")
-      .get(),
-
-    db.collection("repayments")
-      .where("userId", "==", uid)
-      .get(),
-  ]);
-
-  let approvedLoans = 0;
-  let paid = 0;
-
-  loanSnapshot.forEach((doc) => {
-    approvedLoans += Number(doc.data().amount || 0);
+async function darajaPost(path, body, token, timeout = 30000) {
+  const response = await fetch(baseUrl() + path, {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + token,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeout)
   });
 
-  repaymentSnapshot.forEach((doc) => {
-    const item = doc.data();
-
-    if (!item.status || item.status === "SUCCESS") {
-      paid += Number(item.amount || 0);
-    }
-  });
-
-  return Math.max(0, approvedLoans - paid);
+  return readDarajaResponse(response);
 }
 
-async function requireMember(req, res, next) {
-  try {
-    const header = req.headers.authorization || "";
-    const match = header.match(/^Bearer (.+)$/);
+function getPassword(credentials, timestamp) {
+  return Buffer.from(
+    credentials.shortcode +
+    credentials.passkey +
+    timestamp
+  ).toString("base64");
+}
 
-    if (!match) {
-      return res.status(401).json({
-        error: "Sign in is required.",
-      });
+function metadataObject(items) {
+  const result = {};
+
+  for (const item of items || []) {
+    if (item && typeof item.Name === "string") {
+      result[item.Name] = item.Value;
     }
-
-    const decoded = await getAuth().verifyIdToken(match[1]);
-
-    req.uid = decoded.uid;
-
-    return next();
-  } catch {
-    return res.status(401).json({
-      error: "Invalid or expired sign-in token.",
-    });
   }
+
+  return result;
 }
 
-app.get("/", (_req, res) => {
+function safeMessage(error) {
+  if (
+    error.name === "TimeoutError" ||
+    error.name === "AbortError"
+  ) {
+    return "The Daraja request timed out. Check payment status before retrying.";
+  }
+
+  return error.message || "The payment request failed.";
+}
+
+// Root endpoint.
+app.get("/", (req, res) => {
   res.json({
-    service: "SACCO M-Pesa sandbox backend",
-    status: "running",
+    success: true,
+    message: "E-commerce M-PESA backend is running.",
+    environment: config().environment
   });
 });
 
-app.post("/mpesa/stkpush", requireMember, async (req, res) => {
-  console.log("STK Push route reached");
+// Health check.
+app.get("/health", (req, res) => {
+  res.json({
+    success: true,
+    status: "healthy"
+  });
+});
 
-  let transactionRef;
-
+// Initiate STK Push.
+app.post("/api/mpesa/stkpush", stkLimiter, async (req, res) => {
   try {
-    const amount = Number(req.body.amount);
-    const phone = normalizePhone(req.body.phone);
+    const credentials = config();
 
-    if (!Number.isSafeInteger(amount) || amount < 1 || amount > 150000) {
+    const phone = phoneNumber(req.body?.phone);
+    const amount = Number(req.body?.amount);
+
+    if (
+      !Number.isSafeInteger(amount) ||
+      amount < 1 ||
+      amount > 10000
+    ) {
       return res.status(400).json({
-        error: "Enter a whole-number amount between KES 1 and KES 150,000.",
+        success: false,
+        message: "Amount must be a whole number from 1 to 10000."
       });
     }
 
-    const balance = await getOutstandingBalance(req.uid);
-
-    if (amount > balance) {
-      return res.status(400).json({
-        error: "The repayment exceeds your outstanding loan balance.",
-      });
-    }
-
-    transactionRef = db.collection("mpesaTransactions").doc();
-
-    await transactionRef.set({
-      userId: req.uid,
-      amount,
-      phone,
-      status: "PENDING",
-      createdAt: FieldValue.serverTimestamp(),
-    });
-
-    const token = await getAccessToken();
+    const token = await getToken();
     const timestamp = getTimestamp();
+    const password = getPassword(credentials, timestamp);
 
-    const shortcode = process.env.MPESA_SHORTCODE || "174379";
-    console.log("Daraja environment:", process.env.MPESA_ENV);
-    console.log("Shortcode being sent:", shortcode);
-    const passkey = process.env.MPESA_PASSKEY;
-
-    const password = Buffer.from(
-      shortcode + passkey + timestamp
-    ).toString("base64");
-
-    const baseUrl = (process.env.PUBLIC_BASE_URL || "").replace(/\/+$/, "");
-
-    if (!baseUrl.startsWith("https://")) {
-      throw new Error(
-        "PUBLIC_BASE_URL must be the public HTTPS Render URL."
-      );
-    }
-
-    const callbackToken = process.env.CALLBACK_TOKEN;
-
-    if (!callbackToken) {
-      throw new Error("CALLBACK_TOKEN is missing from environment variables.");
-    }
-
-    const callbackUrl =
-      `${baseUrl}/mpesa/callback?token=${encodeURIComponent(callbackToken)}`;
-
-    const response = await fetch(
-      `${DARAJA_BASE}/mpesa/stkpush/v1/processrequest`,
+    const result = await darajaPost(
+      "/mpesa/stkpush/v1/processrequest",
       {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          BusinessShortCode: shortcode,
-          Password: password,
-          Timestamp: timestamp,
-          TransactionType: "CustomerPayBillOnline",
-          Amount: amount,
-          PartyA: phone,
-          PartyB: shortcode,
-          PhoneNumber: phone,
-          CallBackURL: callbackUrl,
-          AccountReference: "SACCO",
-          TransactionDesc: "Loan repayment",
-        }),
-      }
+        BusinessShortCode: credentials.shortcode,
+        Password: password,
+        Timestamp: timestamp,
+        TransactionType: "CustomerPayBillOnline",
+        Amount: amount,
+        PartyA: phone,
+        PartyB: credentials.shortcode,
+        PhoneNumber: phone,
+        CallBackURL: credentials.callback,
+        AccountReference: "ECOMMERCE",
+        TransactionDesc: "E-commerce order payment"
+      },
+      token,
+      45000
     );
 
-    const responseText = await response.text();
+    console.log("STK response:", JSON.stringify({
+      responseCode: result.ResponseCode,
+      checkoutRequestId: result.CheckoutRequestID,
+      responseDescription: result.ResponseDescription
+    }));
 
-    let data = {};
-
-    try {
-      data = responseText ? JSON.parse(responseText) : {};
-    } catch {
-      data = { rawResponse: responseText };
-    }
-
-    console.log("Daraja STK HTTP status:", response.status);
-    console.log("Daraja STK response:", JSON.stringify(data));
-
-    if (!response.ok || !data.CheckoutRequestID) {
-      await transactionRef.update({
-        status: "FAILED",
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-
-      const darajaMessage =
-        data.errorMessage ||
-        data.ResponseDescription ||
-        data.ResponseDesc ||
-        data.error ||
-        "Safaricom did not accept the STK Push request.";
-
+    if (
+      String(result.ResponseCode) !== "0" ||
+      !result.CheckoutRequestID
+    ) {
       return res.status(502).json({
-        error: darajaMessage,
-        darajaCode: data.errorCode || data.ResponseCode || null,
+        success: false,
+        message:
+          result.errorMessage ||
+          result.ResponseDescription ||
+          "Daraja rejected the STK Push request."
       });
     }
 
-    await transactionRef.update({
-      checkoutRequestId: data.CheckoutRequestID,
-      merchantRequestId: data.MerchantRequestID || null,
-      updatedAt: FieldValue.serverTimestamp(),
+    const checkoutId = result.CheckoutRequestID;
+
+    payments.set(checkoutId, {
+      checkoutRequestId: checkoutId,
+      merchantRequestId: result.MerchantRequestID || null,
+      phone,
+      amount,
+      status: "PENDING",
+      callbackReceived: false,
+      createdAt: new Date().toISOString()
     });
 
     return res.status(200).json({
       success: true,
-      message: data.CustomerMessage || "STK Push request accepted.",
-      checkoutRequestId: data.CheckoutRequestID,
-      merchantRequestId: data.MerchantRequestID || null,
-      responseCode: data.ResponseCode || null,
+      message: "STK Push accepted. Check your phone.",
+      checkoutRequestId: checkoutId,
+      merchantRequestId: result.MerchantRequestID || null,
+      status: "PENDING"
     });
   } catch (error) {
     console.error("STK Push error:", error.message);
 
-    if (transactionRef) {
-      try {
-        await transactionRef.update({
-          status: "FAILED",
-          errorMessage: error.message,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
-      } catch (updateError) {
-        console.error(
-          "Failed to update transaction:",
-          updateError.message
-        );
-      }
-    }
+    const timeout =
+      error.name === "TimeoutError" ||
+      error.name === "AbortError";
 
-    return res.status(500).json({
+    return res.status(timeout ? 504 : 502).json({
       success: false,
-      message: "Failed to initiate M-Pesa STK Push.",
+      message: safeMessage(error)
     });
   }
 });
 
-app.post("/mpesa/callback", async (req, res) => {
-  const provided = String(req.query.token || "");
-  const expected = process.env.CALLBACK_TOKEN;
-
-  if (
-    !expected ||
-    provided.length !== expected.length ||
-    !crypto.timingSafeEqual(
-      Buffer.from(provided),
-      Buffer.from(expected)
-    )
-  ) {
-    return res.status(403).send("Forbidden");
-  }
-
-  const callback = req.body?.Body?.stkCallback;
-
-  if (!callback?.CheckoutRequestID) {
-    return res.status(400).send("Invalid callback");
-  }
-
+// Receive the Daraja callback.
+app.post("/api/payment/callback", (req, res) => {
   try {
-    const matches = await db.collection("mpesaTransactions")
-      .where("checkoutRequestId", "==", callback.CheckoutRequestID)
-      .limit(1)
-      .get();
-
-    if (matches.empty) {
-      console.warn("Callback received for an unknown checkout request.");
-      return res.status(200).send("Received");
-    }
-
-    const transactionDoc = matches.docs[0];
-    const transactionRef = transactionDoc.ref;
-    const transaction = transactionDoc.data();
-
-    if (transaction.status !== "PENDING") {
-      return res.status(200).send("Already processed");
-    }
-
-    if (Number(callback.ResultCode) !== 0) {
-      await transactionRef.update({
-        status: "FAILED",
-        resultCode: callback.ResultCode,
-        resultDescription: callback.ResultDesc || "Payment failed",
-        completedAt: FieldValue.serverTimestamp(),
-      });
-
-      return res.status(200).send("Received");
-    }
-
-    const metadata = {};
-
-    for (const item of callback.CallbackMetadata?.Item || []) {
-      metadata[item.Name] = item.Value;
-    }
-
-    const receipt = metadata.MpesaReceiptNumber;
-    const callbackAmount = Number(metadata.Amount);
-    const callbackPhone = String(metadata.PhoneNumber || "");
+    const callback = req.body?.Body?.stkCallback;
 
     if (
-      !receipt ||
-      callbackAmount !== transaction.amount ||
-      (callbackPhone && callbackPhone !== transaction.phone)
+      !callback ||
+      typeof callback.CheckoutRequestID !== "string" ||
+      callback.ResultCode === undefined ||
+      callback.ResultCode === null
     ) {
-      await transactionRef.update({
-        status: "REVIEW_REQUIRED",
-        resultDescription: "Payment details require verification.",
+      return res.status(400).json({
+        ResultCode: 1,
+        ResultDesc: "Invalid callback payload."
       });
-
-      return res.status(200).send("Received");
     }
 
-    await db.runTransaction(async (tx) => {
-      const current = await tx.get(transactionRef);
+    const checkoutId = callback.CheckoutRequestID;
+    const payment = payments.get(checkoutId);
 
-      if (!current.exists || current.data().status !== "PENDING") {
-        return;
+    console.log("Callback received:", JSON.stringify({
+      checkoutRequestId: checkoutId,
+      resultCode: callback.ResultCode,
+      resultDescription: callback.ResultDesc
+    }));
+
+    // A callback for an unknown payment must never create a payment record.
+    if (!payment) {
+      console.warn("Callback for unknown checkout ID:", checkoutId);
+
+      return res.json({
+        ResultCode: 0,
+        ResultDesc: "Callback acknowledged."
+      });
+    }
+
+    // Do not overwrite an already processed callback.
+    if (payment.callbackReceived) {
+      return res.json({
+        ResultCode: 0,
+        ResultDesc: "Callback already processed."
+      });
+    }
+
+    const metadata = metadataObject(
+      callback.CallbackMetadata?.Item
+    );
+
+    payment.callbackReceived = true;
+    payment.callbackResultCode = callback.ResultCode;
+    payment.callbackDescription = String(
+      callback.ResultDesc || ""
+    ).slice(0, 300);
+
+    if (String(callback.ResultCode) !== "0") {
+      payment.status = "FAILED";
+      payments.set(checkoutId, payment);
+
+      return res.json({
+        ResultCode: 0,
+        ResultDesc: "Callback processed."
+      });
+    }
+
+    const paidAmount = Number(metadata.Amount);
+    const paidPhone = String(metadata.PhoneNumber || "");
+    const receipt = String(metadata.MpesaReceiptNumber || "");
+
+    // Require transaction details to match the initiated payment.
+    if (
+      !Number.isFinite(paidAmount) ||
+      paidAmount !== payment.amount ||
+      paidPhone !== payment.phone ||
+      !receipt
+    ) {
+      payment.status = "REVIEW_REQUIRED";
+      payment.validationError =
+        "Callback payment details did not match the request.";
+
+      payments.set(checkoutId, payment);
+
+      console.error(
+        "Payment requires manual review:",
+        checkoutId
+      );
+
+      return res.json({
+        ResultCode: 0,
+        ResultDesc: "Callback acknowledged for review."
+      });
+    }
+
+    payment.status = "SUCCESS";
+    payment.amount = paidAmount;
+    payment.receiptNumber = receipt;
+    payment.paidAt = new Date().toISOString();
+
+    payments.set(checkoutId, payment);
+
+    console.log("Payment confirmed:", JSON.stringify({
+      checkoutRequestId: checkoutId,
+      receiptNumber: receipt,
+      amount: paidAmount
+    }));
+
+    return res.json({
+      ResultCode: 0,
+      ResultDesc: "Callback processed."
+    });
+  } catch (error) {
+    console.error("Callback processing error:", error.message);
+
+    return res.status(500).json({
+      ResultCode: 1,
+      ResultDesc: "Callback processing failed."
+    });
+  }
+});
+
+// Check payment status.
+app.get(
+  "/api/mpesa/status/:id",
+  statusLimiter,
+  async (req, res) => {
+    try {
+      const checkoutId = req.params.id;
+      const payment = payments.get(checkoutId);
+
+      if (!payment) {
+        return res.status(404).json({
+          success: false,
+          status: "NOT_FOUND",
+          message: "Payment was not found in this server session."
+        });
       }
 
-      const repaymentRef = db.collection("repayments").doc(transactionDoc.id);
+      // A callback takes priority over a status query.
+      if (payment.callbackReceived) {
+        return res.json({
+          success: true,
+          checkoutRequestId: checkoutId,
+          status: payment.status,
+          amount: payment.amount,
+          receiptNumber: payment.receiptNumber || null
+        });
+      }
 
-      tx.create(repaymentRef, {
-        userId: transaction.userId,
-        amount: transaction.amount,
-        status: "SUCCESS",
-        source: "MPESA_SANDBOX",
-        receiptNumber: String(receipt),
-        phone: transaction.phone,
-        timestamp: Date.now(),
-        createdAt: FieldValue.serverTimestamp(),
+      const credentials = config();
+      const token = await getToken();
+      const timestamp = getTimestamp();
+
+      const result = await darajaPost(
+        "/mpesa/stkpushquery/v1/query",
+        {
+          BusinessShortCode: credentials.shortcode,
+          Password: getPassword(credentials, timestamp),
+          Timestamp: timestamp,
+          CheckoutRequestID: checkoutId
+        },
+        token
+      );
+
+      console.log("Status query:", JSON.stringify({
+        checkoutRequestId: checkoutId,
+        responseCode: result.ResponseCode,
+        resultCode: result.ResultCode,
+        resultDescription: result.ResultDesc
+      }));
+
+      // ResponseCode alone does not establish successful payment.
+      if (
+        result.ResultCode !== undefined &&
+        result.ResultCode !== null
+      ) {
+        if (String(result.ResultCode) === "0") {
+          // The query response alone is insufficient here to validate
+          // the receipt, amount and phone. Await a verified callback.
+          payment.status = "PENDING_CONFIRMATION";
+        } else {
+          const description = String(
+            result.ResultDesc || ""
+          ).toLowerCase();
+
+          // Do not mark pending or inconclusive queries as failed.
+          if (
+            description.includes("processed successfully")
+          ) {
+            payment.status = "PENDING_CONFIRMATION";
+          } else {
+            payment.status = "FAILED";
+          }
+        }
+
+        payments.set(checkoutId, payment);
+      }
+
+      return res.json({
+        success: true,
+        checkoutRequestId: checkoutId,
+        status: payment.status,
+        amount: payment.amount,
+        message:
+          payment.status === "PENDING_CONFIRMATION"
+            ? "Awaiting verified payment callback."
+            : "Payment status retrieved."
       });
+    } catch (error) {
+      console.error("Status check error:", error.message);
 
-      tx.update(transactionRef, {
-        status: "SUCCESS",
-        receiptNumber: String(receipt),
-        completedAt: FieldValue.serverTimestamp(),
+      const timeout =
+        error.name === "TimeoutError" ||
+        error.name === "AbortError";
+
+      return res.status(timeout ? 504 : 502).json({
+        success: false,
+        message: safeMessage(error)
       });
-    });
-
-    return res.status(200).send("Received");
-  } catch (error) {
-    console.error("Callback processing failed:", error.message);
-    return res.status(500).send("Processing failed");
+    }
   }
+);
+
+// Handle malformed JSON.
+app.use((error, req, res, next) => {
+  if (error instanceof SyntaxError && error.status === 400) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid JSON request body."
+    });
+  }
+
+  return next(error);
+});
+
+// Unknown routes.
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found.",
+    path: req.path
+  });
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`SACCO M-Pesa backend listening on port ${PORT}`);
+  console.log(
+    "E-commerce M-PESA backend listening on port " + PORT
+  );
+
+  console.log(
+    "Daraja environment:",
+    (process.env.DARAJA_ENV || "sandbox").toLowerCase()
+  );
 });
